@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Student Dashboard — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1 id="welcomeHeading">Welcome</h1>
+        <p class="text-muted" id="welcomeSubtitle">Your campus events at a glance.</p>
+      </div>
+      <div class="flex gap-sm">
+        <a href="/pages/student/events.html" class="btn">Browse Events</a>
+        <a href="/pages/student/my-events.html" class="btn btn-secondary">My Events</a>
+      </div>
+    </div>
+
+    <div class="cards-grid" id="statCards"></div>
+
+    <div class="card">
+      <div class="flex-between mb-1">
+        <h2>Upcoming Events</h2>
+        <a href="/pages/student/events.html">See all →</a>
+      </div>
+      <div id="upcoming" class="loading">Loading…</div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    (async function () {
+      const user = await requireAuth('student');
+      if (!user) return;
+      renderNavbar(user, 'dashboard');
+      document.getElementById('welcomeHeading').textContent = `Welcome, ${user.name || user.email}`;
+
+      const today = new Date().toISOString().slice(0, 10);
+
+      try {
+        const [eventsData, myRegsData, myAttData] = await Promise.all([
+          apiCall('/api/events'),
+          apiCall('/api/registrations/my'),
+          apiCall('/api/attendance/my'),
+        ]);
+        const upcoming = (eventsData.events || [])
+          .filter(ev => ev.Event_Date >= today)
+          .slice(0, 5);
+        const activeRegs = (myRegsData.registrations || []).filter(r => r.Registration_Status !== 'Cancelled');
+        const presentCount = (myAttData.attendance || []).filter(a => a.Attendance_Status === 'Present').length;
+        const totalAtt = (myAttData.attendance || []).length;
+
+        document.getElementById('statCards').innerHTML = `
+          <div class="stat-card"><div class="label" data-icon="registrations">My Registrations</div><div class="value">${activeRegs.length}</div><div class="sub">active</div></div>
+          <div class="stat-card"><div class="label" data-icon="attendance">Events Attended</div><div class="value">${presentCount}</div><div class="sub">of ${totalAtt} recorded</div></div>
+          <div class="stat-card"><div class="label" data-icon="events">Upcoming Events</div><div class="value">${upcoming.length}</div><div class="sub">this month</div></div>
+        `;
+
+        if (!upcoming.length) {
+          document.getElementById('upcoming').innerHTML = '<p class="text-muted">No upcoming events yet.</p>';
+        } else {
+          document.getElementById('upcoming').innerHTML = `
+            <div class="table-wrapper">
+              <table class="data">
+                <thead><tr><th>Event</th><th>Category</th><th>Date</th><th>Time</th><th>Venue</th></tr></thead>
+                <tbody>${upcoming.map(ev => `
+                  <tr>
+                    <td>${escapeHTML(ev.Event_Name)}</td>
+                    <td>${escapeHTML(ev.Category)}</td>
+                    <td>${formatDate(ev.Event_Date)}</td>
+                    <td>${formatTime(ev.Start_Time)} – ${formatTime(ev.End_Time)}</td>
+                    <td>${escapeHTML(ev.Venue_Name)}</td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>`;
+        }
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    })();
+  </script>
+</body>
+</html>

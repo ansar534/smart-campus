@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manage Events — SCEMS Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1>Manage Events</h1>
+        <p class="text-muted">Create, edit, or delete any event as an admin.</p>
+      </div>
+      <a href="/pages/events/event-form.html?mode=create" class="btn">+ Create Event</a>
+    </div>
+
+    <div class="card">
+      <div class="filters">
+        <div class="form-group">
+          <label for="search">Search</label>
+          <input id="search" placeholder="Event name..." />
+        </div>
+        <div class="form-group">
+          <label for="category">Category</label>
+          <select id="category">
+            <option value="">All</option>
+            <option>Technical</option>
+            <option>Management</option>
+            <option>Career</option>
+            <option>Cultural</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <button class="btn" type="button" onclick="loadEvents()">Apply</button>
+      </div>
+
+      <div id="eventsTable" class="loading">Loading…</div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    let allEvents = [];
+
+    (async () => {
+      const user = await requireAuth('admin');
+      if (!user) return;
+      renderNavbar(user, 'events');
+      await loadEvents();
+    })();
+
+    async function loadEvents() {
+      try {
+        const data = await apiCall('/api/admin/events');
+        allEvents = data.events || [];
+        renderEvents();
+      } catch (err) {
+        document.getElementById('eventsTable').innerHTML = `<p class="text-muted">${escapeHTML(err.message)}</p>`;
+      }
+    }
+
+    function renderEvents() {
+      const search = document.getElementById('search').value.trim().toLowerCase();
+      const category = document.getElementById('category').value;
+      const rows = allEvents.filter((e) => {
+        if (search && !String(e.Event_Name || '').toLowerCase().includes(search)) return false;
+        if (category && e.Category !== category) return false;
+        return true;
+      });
+      const el = document.getElementById('eventsTable');
+      if (!rows.length) {
+        el.innerHTML = '<p class="text-muted">No events found.</p>';
+        return;
+      }
+      el.innerHTML = `
+        <div class="table-wrapper">
+          <table class="data">
+            <thead><tr>
+              <th>ID</th><th>Event</th><th>Date</th><th>Organizer</th><th>Venue</th><th>Analytics</th><th>Actions</th>
+            </tr></thead>
+            <tbody>${rows.map(e => {
+              const reg = Number(e.Registration_Count || 0);
+              const cap = Number(e.Capacity || 0);
+              const present = Number(e.Present_Count || 0);
+              const attendanceRate = reg > 0 ? Math.round((present / reg) * 1000) / 10 : 0;
+              return `
+                <tr>
+                  <td>${e.Event_ID}</td>
+                  <td><strong>${escapeHTML(e.Event_Name)}</strong><br/><span class="small text-muted">${escapeHTML(e.Category || '')}</span></td>
+                  <td>${formatDate(e.Event_Date)}<br/><span class="small text-muted">${formatTime(e.Start_Time)} – ${formatTime(e.End_Time)}</span></td>
+                  <td>${escapeHTML(e.Faculty_Name || '')}</td>
+                  <td>${escapeHTML(e.Venue_Name || '')}</td>
+                  <td>${reg}/${cap} registered<br/><span class="small text-muted">${present} present (${attendanceRate}%)</span></td>
+                  <td class="flex gap-sm">
+                    <a class="btn btn-sm btn-secondary" href="/pages/events/event-form.html?mode=edit&id=${e.Event_ID}">Edit</a>
+                    <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.Event_ID})">Delete</button>
+                  </td>
+                </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>`;
+    }
+
+    async function deleteEvent(id) {
+      if (!confirm('Delete this event? This is blocked if registrations exist.')) return;
+      try {
+        await apiCall(`/api/events/${id}`, 'DELETE');
+        showMessage('Event deleted', 'success');
+        await loadEvents();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+    window.loadEvents = loadEvents;
+    window.deleteEvent = deleteEvent;
+  </script>
+</body>
+</html>

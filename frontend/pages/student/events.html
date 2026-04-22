@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Browse Events — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Browse Events</h1>
+    </div>
+
+    <div class="card">
+      <form id="filters" class="filters" onsubmit="event.preventDefault(); loadEvents();">
+        <div class="form-group">
+          <label for="search">Search</label>
+          <input type="text" id="search" placeholder="Event name..." />
+        </div>
+        <div class="form-group">
+          <label for="category">Category</label>
+          <select id="category">
+            <option value="">All</option>
+            <option>Technical</option>
+            <option>Management</option>
+            <option>Career</option>
+            <option>Cultural</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="date">Date</label>
+          <input type="date" id="date" />
+        </div>
+        <button type="submit" class="btn">Apply</button>
+        <button type="button" class="btn btn-secondary" onclick="resetFilters()">Reset</button>
+      </form>
+    </div>
+
+    <div id="eventList" class="loading">Loading events…</div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    let myRegistrationEventIds = new Set();
+
+    async function loadEvents() {
+      const q = new URLSearchParams();
+      const s = document.getElementById('search').value.trim();
+      const c = document.getElementById('category').value;
+      const d = document.getElementById('date').value;
+      if (s) q.set('search', s);
+      if (c) q.set('category', c);
+      if (d) q.set('date', d);
+
+      const container = document.getElementById('eventList');
+      container.innerHTML = '<div class="loading">Loading events…</div>';
+      try {
+        const [eventsData, regsData] = await Promise.all([
+          apiCall('/api/events' + (q.toString() ? `?${q.toString()}` : '')),
+          apiCall('/api/registrations/my'),
+        ]);
+        myRegistrationEventIds = new Set(
+          (regsData.registrations || [])
+            .filter(r => r.Registration_Status !== 'Cancelled')
+            .map(r => r.Event_ID)
+        );
+        renderEvents(eventsData.events || []);
+      } catch (err) {
+        container.innerHTML = `<p class="text-muted">Error: ${escapeHTML(err.message)}</p>`;
+      }
+    }
+
+    function renderEvents(events) {
+      const container = document.getElementById('eventList');
+      if (!events.length) {
+        container.innerHTML = '<div class="card"><p class="text-muted text-center">No events match your filters.</p></div>';
+        return;
+      }
+      container.innerHTML = `
+        <div class="table-wrapper">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Event</th><th>Category</th><th>Date</th><th>Time</th>
+                <th>Venue</th><th>Organizer</th><th>Seats</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${events.map(ev => {
+                const seatsLeft = Math.max(0, (ev.Capacity || 0) - (ev.Registration_Count || 0));
+                const registered = myRegistrationEventIds.has(ev.Event_ID);
+                let action;
+                if (registered) action = '<span class="badge confirmed">Registered</span>';
+                else if (seatsLeft === 0) action = '<span class="badge cancelled">Full</span>';
+                else action = `<button class="btn btn-sm" onclick="register(${ev.Event_ID})">Register</button>`;
+                return `<tr>
+                  <td><a href="/pages/student/event-details.html?id=${ev.Event_ID}"><strong>${escapeHTML(ev.Event_Name)}</strong></a><br/><span class="small text-muted">${escapeHTML(ev.Description || '')}</span></td>
+                  <td>${escapeHTML(ev.Category)}</td>
+                  <td>${formatDate(ev.Event_Date)}</td>
+                  <td>${formatTime(ev.Start_Time)} – ${formatTime(ev.End_Time)}</td>
+                  <td>${escapeHTML(ev.Venue_Name)}<br/><span class="small text-muted">${escapeHTML(ev.Venue_Location || '')}</span></td>
+                  <td>${escapeHTML(ev.Faculty_Name)}</td>
+                  <td>${seatsLeft} / ${ev.Capacity}</td>
+                  <td>${action}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    async function register(eventId) {
+      try {
+        await apiCall('/api/registrations', 'POST', { event_id: eventId });
+        showMessage('Registered successfully!', 'success');
+        loadEvents();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+
+    function resetFilters() {
+      document.getElementById('search').value = '';
+      document.getElementById('category').value = '';
+      document.getElementById('date').value = '';
+      loadEvents();
+    }
+
+    window.register = register;
+    window.resetFilters = resetFilters;
+    window.loadEvents = loadEvents;
+
+    (async () => {
+      const user = await requireAuth('student');
+      if (!user) return;
+      renderNavbar(user, 'events');
+      loadEvents();
+    })();
+  </script>
+</body>
+</html>

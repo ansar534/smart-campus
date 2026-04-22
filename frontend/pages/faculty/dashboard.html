@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Faculty Dashboard — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1 id="welcome">Faculty Dashboard</h1>
+        <p class="text-muted">Manage your events and track attendance.</p>
+      </div>
+      <a href="/pages/events/event-form.html?mode=create" class="btn">+ Create Event</a>
+    </div>
+
+    <div class="cards-grid" id="statCards"></div>
+
+    <div class="card">
+      <h2>My Events</h2>
+      <div id="eventsTable" class="loading">Loading…</div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    (async () => {
+      const user = await requireAuth('faculty');
+      if (!user) return;
+      renderNavbar(user, 'dashboard');
+      document.getElementById('welcome').textContent = `Welcome, ${user.name || user.email}`;
+      loadData(user);
+    })();
+
+    async function loadData(user) {
+      try {
+        const data = await apiCall(`/api/events?facultyId=${user.linked_id}`);
+        const events = data.events || [];
+        const totalRegs = events.reduce((sum, e) => sum + Number(e.Registration_Count || 0), 0);
+
+        document.getElementById('statCards').innerHTML = `
+          <div class="stat-card"><div class="label" data-icon="events">My Events</div><div class="value">${events.length}</div></div>
+          <div class="stat-card"><div class="label" data-icon="registrations">Total Registrations</div><div class="value">${totalRegs}</div></div>
+          <div class="stat-card"><div class="label" data-icon="attendance">Upcoming</div><div class="value">${
+            events.filter(e => e.Event_Date >= new Date().toISOString().slice(0, 10)).length
+          }</div></div>
+        `;
+
+        const el = document.getElementById('eventsTable');
+        if (!events.length) {
+          el.innerHTML = '<p class="text-muted">No events yet. <a href="/pages/events/event-form.html?mode=create">Create one →</a></p>';
+          return;
+        }
+        el.innerHTML = `
+          <div class="table-wrapper">
+            <table class="data">
+              <thead><tr>
+                <th>Event</th><th>Category</th><th>Date</th><th>Time</th>
+                <th>Venue</th><th>Analytics</th><th>Actions</th>
+              </tr></thead>
+              <tbody>${events.map(ev => `
+                <tr>
+                  <td><strong>${escapeHTML(ev.Event_Name)}</strong></td>
+                  <td>${escapeHTML(ev.Category)}</td>
+                  <td>${formatDate(ev.Event_Date)}</td>
+                  <td>${formatTime(ev.Start_Time)} – ${formatTime(ev.End_Time)}</td>
+                  <td>${escapeHTML(ev.Venue_Name)}</td>
+                  <td>
+                    ${Number(ev.Registration_Count || 0)} / ${Number(ev.Capacity || 0)} registered
+                    <br/>
+                    <span class="small text-muted">
+                      ${Number(ev.Present_Count || 0)} present
+                      (${Number(ev.Registration_Count || 0) > 0
+                        ? Math.round((Number(ev.Present_Count || 0) / Number(ev.Registration_Count || 0)) * 1000) / 10
+                        : 0}%)
+                    </span>
+                  </td>
+                  <td>
+                    <a class="btn btn-sm btn-secondary" href="/pages/events/event-form.html?mode=edit&id=${ev.Event_ID}">Edit</a>
+                    <a class="btn btn-sm btn-secondary" href="/pages/faculty/roster.html?eventId=${ev.Event_ID}">Roster</a>
+                    <a class="btn btn-sm" href="/pages/faculty/attendance.html?eventId=${ev.Event_ID}">Attendance</a>
+                    <button class="btn btn-sm btn-danger" onclick="delEvent(${ev.Event_ID})">Delete</button>
+                  </td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+
+    async function delEvent(id) {
+      if (!confirm('Delete this event? Only events with zero registrations can be deleted.')) return;
+      try {
+        await apiCall(`/api/events/${id}`, 'DELETE');
+        showMessage('Event deleted', 'success');
+        setTimeout(() => location.reload(), 400);
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+    window.delEvent = delEvent;
+  </script>
+</body>
+</html>

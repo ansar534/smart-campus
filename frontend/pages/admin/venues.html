@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Venues — SCEMS Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Venues</h1>
+      <button class="btn" onclick="showForm()">+ Add Venue</button>
+    </div>
+
+    <div class="card" id="formCard" style="display:none;">
+      <h3 id="formTitle">Add Venue</h3>
+      <form id="venueForm">
+        <div class="form-row">
+          <div class="form-group"><label>Name *</label><input id="venue_name" required/></div>
+          <div class="form-group"><label>Location *</label><input id="location" required/></div>
+        </div>
+        <div class="form-group"><label>Capacity *</label><input id="capacity" type="number" min="1" required/></div>
+        <div class="flex gap-sm">
+          <button class="btn" type="submit" id="submitBtn">Save</button>
+          <button class="btn btn-secondary" type="button" onclick="hideForm()">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div id="venuesTable" class="loading">Loading…</div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    let editId = null;
+
+    (async () => {
+      const user = await requireAuth('admin');
+      if (!user) return;
+      renderNavbar(user, 'venues');
+      loadVenues();
+    })();
+
+    async function loadVenues() {
+      try {
+        const data = await apiCall('/api/admin/venues');
+        const el = document.getElementById('venuesTable');
+        const venues = data.venues || [];
+        if (!venues.length) { el.innerHTML = '<p class="text-muted">No venues yet.</p>'; return; }
+        el.innerHTML = `<div class="table-wrapper"><table class="data">
+          <thead><tr><th>ID</th><th>Name</th><th>Location</th><th>Capacity</th><th>Events</th><th>Actions</th></tr></thead>
+          <tbody>${venues.map(v => `
+            <tr>
+              <td>${v.Venue_ID}</td>
+              <td>${escapeHTML(v.Venue_Name)}</td>
+              <td>${escapeHTML(v.Location)}</td>
+              <td>${v.Capacity}</td>
+              <td>${v.Event_Count}</td>
+              <td>
+                <button class="btn btn-sm btn-secondary" onclick='editVenue(${JSON.stringify(v)})'>Edit</button>
+                <button class="btn btn-sm btn-danger" onclick="delVenue(${v.Venue_ID})">Delete</button>
+              </td>
+            </tr>`).join('')}
+          </tbody></table></div>`;
+      } catch (err) { showMessage(err.message, 'error'); }
+    }
+
+    function showForm() {
+      document.getElementById('formCard').style.display = '';
+      document.getElementById('formTitle').textContent = 'Add Venue';
+      document.getElementById('venueForm').reset();
+      editId = null;
+    }
+    function hideForm() { document.getElementById('formCard').style.display = 'none'; editId = null; }
+    function editVenue(v) {
+      showForm();
+      document.getElementById('formTitle').textContent = `Edit Venue #${v.Venue_ID}`;
+      document.getElementById('venue_name').value = v.Venue_Name;
+      document.getElementById('location').value = v.Location;
+      document.getElementById('capacity').value = v.Capacity;
+      editId = v.Venue_ID;
+    }
+    async function delVenue(id) {
+      if (!confirm('Delete this venue?')) return;
+      try { await apiCall(`/api/admin/venues/${id}`, 'DELETE'); showMessage('Deleted', 'success'); loadVenues(); }
+      catch (err) { showMessage(err.message, 'error'); }
+    }
+    window.showForm = showForm; window.hideForm = hideForm;
+    window.editVenue = editVenue; window.delVenue = delVenue;
+
+    document.getElementById('venueForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        venue_name: document.getElementById('venue_name').value.trim(),
+        location:   document.getElementById('location').value.trim(),
+        capacity:   Number(document.getElementById('capacity').value),
+      };
+      if (!payload.venue_name || !payload.location || !payload.capacity) {
+        showMessage('All fields are required', 'error'); return;
+      }
+      try {
+        if (editId) await apiCall(`/api/admin/venues/${editId}`, 'PUT', payload);
+        else        await apiCall('/api/admin/venues', 'POST', payload);
+        showMessage('Saved', 'success'); hideForm(); loadVenues();
+      } catch (err) { showMessage(err.message, 'error'); }
+    });
+  </script>
+</body>
+</html>

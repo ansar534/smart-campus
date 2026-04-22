@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Event Roster — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1 id="title">Event Roster</h1>
+        <p class="text-muted" id="meta">Loading event details…</p>
+      </div>
+      <a href="/pages/faculty/dashboard.html" class="btn btn-secondary">Back</a>
+    </div>
+
+    <div class="card">
+      <div id="rosterTable" class="loading">Loading roster…</div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const eventId = Number(params.get('eventId'));
+
+    (async () => {
+      const user = await requireAuth('faculty');
+      if (!user) return;
+      renderNavbar(user, 'dashboard');
+      if (!eventId) {
+        showMessage('Missing eventId', 'error');
+        return;
+      }
+      await load();
+    })();
+
+    async function load() {
+      try {
+        const [eventData, rosterData] = await Promise.all([
+          apiCall(`/api/events/${eventId}`),
+          apiCall(`/api/registrations/event/${eventId}`),
+        ]);
+        const ev = eventData.event;
+        document.getElementById('title').textContent = `${ev.Event_Name} — Roster`;
+        document.getElementById('meta').textContent =
+          `${formatDate(ev.Event_Date)} · ${formatTime(ev.Start_Time)} – ${formatTime(ev.End_Time)} · ${ev.Venue_Name}`;
+
+        const rows = rosterData.registrations || [];
+        const el = document.getElementById('rosterTable');
+        if (!rows.length) {
+          el.innerHTML = '<p class="text-muted">No registrations yet.</p>';
+          return;
+        }
+        el.innerHTML = `
+          <div class="table-wrapper">
+            <table class="data">
+              <thead><tr>
+                <th>Student</th><th>Email</th><th>Major</th><th>Year</th><th>Status</th><th>Registered On</th>
+              </tr></thead>
+              <tbody>${rows.map(r => `
+                <tr>
+                  <td><strong>${escapeHTML(r.First_Name)} ${escapeHTML(r.Last_Name)}</strong></td>
+                  <td>${escapeHTML(r.Email || '')}</td>
+                  <td>${escapeHTML(r.Major || '')}</td>
+                  <td>${escapeHTML(r.Academic_Year || '')}</td>
+                  <td>${statusBadge(r.Registration_Status)}</td>
+                  <td>${formatDate(r.Registration_Date)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      } catch (err) {
+        document.getElementById('rosterTable').innerHTML = `<p class="text-muted">${escapeHTML(err.message)}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>

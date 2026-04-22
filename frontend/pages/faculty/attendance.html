@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mark Attendance — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1 id="eventTitle">Mark Attendance</h1>
+        <p class="text-muted" id="eventMeta"></p>
+      </div>
+      <a href="/pages/faculty/dashboard.html" class="btn btn-secondary">Back</a>
+    </div>
+
+    <div class="card">
+      <div id="attTable" class="loading">Loading attendance list…</div>
+      <div class="mt-1 flex gap-sm">
+        <button class="btn" id="saveBtn">Save Attendance</button>
+        <button class="btn btn-secondary" type="button" onclick="markAll('Present')">Mark All Present</button>
+        <button class="btn btn-secondary" type="button" onclick="markAll('Absent')">Mark All Absent</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const eventId = Number(params.get('eventId'));
+    let attendanceRows = [];
+
+    (async () => {
+      const user = await requireAuth('faculty');
+      if (!user) return;
+      renderNavbar(user, '');
+      if (!eventId) {
+        showMessage('Missing eventId in URL', 'error');
+        return;
+      }
+      try {
+        const ev = await apiCall(`/api/events/${eventId}`);
+        document.getElementById('eventTitle').textContent = ev.event.Event_Name;
+        const reg = Number(ev.event.Registration_Count || 0);
+        const present = Number(ev.event.Present_Count || 0);
+        const rate = reg > 0 ? Math.round((present / reg) * 1000) / 10 : 0;
+        document.getElementById('eventMeta').textContent =
+          `${formatDate(ev.event.Event_Date)} · ${formatTime(ev.event.Start_Time)} – ${formatTime(ev.event.End_Time)} · ${ev.event.Venue_Name} · ${reg} registered, ${present} present (${rate}%)`;
+      } catch (err) { /* ignore */ }
+
+      await loadAttendance();
+    })();
+
+    async function loadAttendance() {
+      try {
+        const data = await apiCall(`/api/attendance/event/${eventId}`);
+        attendanceRows = data.attendance || [];
+        renderTable();
+      } catch (err) {
+        document.getElementById('attTable').innerHTML = `<p class="text-muted">Error: ${escapeHTML(err.message)}</p>`;
+      }
+    }
+
+    function renderTable() {
+      if (!attendanceRows.length) {
+        document.getElementById('attTable').innerHTML = '<p class="text-muted">No registered students for this event yet.</p>';
+        return;
+      }
+      document.getElementById('attTable').innerHTML = `
+        <div class="table-wrapper">
+          <table class="data">
+            <thead><tr><th>Student</th><th>Email</th><th>Major</th><th>Status</th><th>Check-in</th></tr></thead>
+            <tbody>${attendanceRows.map((a, i) => `
+              <tr>
+                <td><strong>${escapeHTML(a.First_Name)} ${escapeHTML(a.Last_Name)}</strong></td>
+                <td>${escapeHTML(a.Email || '')}</td>
+                <td>${escapeHTML(a.Major || '')}</td>
+                <td>
+                  <select data-i="${i}" class="status-sel">
+                    <option value="Present" ${a.Attendance_Status === 'Present' ? 'selected' : ''}>Present</option>
+                    <option value="Absent"  ${a.Attendance_Status === 'Absent'  ? 'selected' : ''}>Absent</option>
+                  </select>
+                </td>
+                <td><input type="time" data-i="${i}" class="checkin-inp" value="${a.Check_In_Time || ''}" /></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+      document.querySelectorAll('.status-sel').forEach(s => s.addEventListener('change', onStatusChange));
+      document.querySelectorAll('.checkin-inp').forEach(c => c.addEventListener('change', onCheckInChange));
+    }
+
+    function onStatusChange(e) {
+      const i = Number(e.target.dataset.i);
+      attendanceRows[i].Attendance_Status = e.target.value;
+      if (e.target.value === 'Absent') {
+        attendanceRows[i].Check_In_Time = null;
+        const inp = document.querySelector(`.checkin-inp[data-i="${i}"]`);
+        if (inp) inp.value = '';
+      }
+    }
+    function onCheckInChange(e) {
+      const i = Number(e.target.dataset.i);
+      attendanceRows[i].Check_In_Time = e.target.value || null;
+    }
+
+    function markAll(status) {
+      attendanceRows.forEach(a => { a.Attendance_Status = status; if (status === 'Absent') a.Check_In_Time = null; });
+      renderTable();
+    }
+    window.markAll = markAll;
+
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      const updates = attendanceRows.map(a => ({
+        attendance_id: a.Attendance_ID,
+        status: a.Attendance_Status,
+        check_in_time: a.Attendance_Status === 'Present' ? (a.Check_In_Time || null) : null,
+      }));
+      try {
+        await apiCall('/api/attendance', 'PUT', { updates });
+        showMessage('Attendance saved', 'success');
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    });
+  </script>
+</body>
+</html>

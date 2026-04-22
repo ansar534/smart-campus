@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Event Form — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <h1 id="pageTitle">Create Event</h1>
+    <p class="text-muted" id="pageSubtitle">Fill event details and publish.</p>
+
+    <div class="card">
+      <form id="eventForm" novalidate>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="event_name">Event Name *</label>
+            <input id="event_name" type="text" required />
+          </div>
+          <div class="form-group">
+            <label for="category">Category *</label>
+            <select id="category" required>
+              <option value="">— Select —</option>
+              <option>Technical</option>
+              <option>Management</option>
+              <option>Career</option>
+              <option>Cultural</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="venue_id">Venue *</label>
+            <select id="venue_id" required><option value="">Loading…</option></select>
+          </div>
+          <div class="form-group">
+            <label for="faculty_id">Faculty Organizer *</label>
+            <select id="faculty_id" required><option value="">Loading…</option></select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="event_date">Date *</label>
+            <input id="event_date" type="date" required />
+          </div>
+          <div class="form-group">
+            <label for="start_time">Start Time *</label>
+            <input id="start_time" type="time" required />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="end_time">End Time *</label>
+            <input id="end_time" type="time" required />
+          </div>
+          <div class="form-group">
+            <label for="description">Description</label>
+            <input id="description" type="text" placeholder="Brief description..." />
+          </div>
+        </div>
+
+        <div class="flex gap-sm">
+          <button type="submit" class="btn" id="submitBtn">Save Event</button>
+          <a id="cancelLink" href="/pages/faculty/dashboard.html" class="btn btn-secondary">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode') === 'edit' ? 'edit' : 'create';
+    const eventId = Number(params.get('id'));
+    let currentUser = null;
+
+    (async () => {
+      const user = await requireAuth(['faculty', 'admin']);
+      if (!user) return;
+      currentUser = user;
+
+      renderNavbar(user, user.role === 'admin' ? 'events' : 'create-event');
+      configurePage();
+      await loadLookups();
+      if (mode === 'edit' && eventId) await loadEvent(eventId);
+    })();
+
+    function configurePage() {
+      const title = document.getElementById('pageTitle');
+      const subtitle = document.getElementById('pageSubtitle');
+      const submit = document.getElementById('submitBtn');
+      const cancel = document.getElementById('cancelLink');
+      cancel.href = currentUser.role === 'admin'
+        ? '/pages/admin/events.html'
+        : '/pages/faculty/dashboard.html';
+
+      if (mode === 'edit') {
+        title.textContent = `Edit Event #${eventId}`;
+        subtitle.textContent = 'Update details and save changes.';
+        submit.textContent = 'Update Event';
+      } else {
+        title.textContent = currentUser.role === 'admin' ? 'Create Event (Admin)' : 'Create Event';
+        subtitle.textContent = currentUser.role === 'admin'
+          ? 'Choose a faculty organizer and publish the event.'
+          : 'Create an event under your organizer account.';
+        submit.textContent = 'Create Event';
+      }
+    }
+
+    async function loadLookups() {
+      try {
+        const [v, f] = await Promise.all([
+          apiCall('/api/admin/venues'),
+          apiCall('/api/admin/faculty-organizers'),
+        ]);
+        const venueSel = document.getElementById('venue_id');
+        const facultySel = document.getElementById('faculty_id');
+
+        venueSel.innerHTML = '<option value="">— Select —</option>' +
+          (v.venues || []).map(x =>
+            `<option value="${x.Venue_ID}">${escapeHTML(x.Venue_Name)} (cap ${x.Capacity})</option>`
+          ).join('');
+
+        facultySel.innerHTML = '<option value="">— Select —</option>' +
+          (f.faculty || []).map(x =>
+            `<option value="${x.Faculty_ID}">${escapeHTML(x.First_Name)} ${escapeHTML(x.Last_Name)} (${escapeHTML(x.Department || 'N/A')})</option>`
+          ).join('');
+
+        // Faculty users cannot change organizer; force to themselves.
+        if (currentUser.role === 'faculty') {
+          facultySel.value = String(currentUser.linked_id || '');
+          facultySel.disabled = true;
+        }
+      } catch (err) {
+        showMessage('Could not load form data: ' + err.message, 'error');
+      }
+    }
+
+    async function loadEvent(id) {
+      try {
+        const data = await apiCall(`/api/events/${id}`);
+        const e = data.event;
+        document.getElementById('event_name').value = e.Event_Name || '';
+        document.getElementById('category').value = e.Category || '';
+        document.getElementById('venue_id').value = e.Venue_ID || '';
+        document.getElementById('faculty_id').value = e.Faculty_ID || '';
+        document.getElementById('event_date').value = String(e.Event_Date || '').slice(0, 10);
+        document.getElementById('start_time').value = String(e.Start_Time || '').slice(0, 5);
+        document.getElementById('end_time').value = String(e.End_Time || '').slice(0, 5);
+        document.getElementById('description').value = e.Description || '';
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+
+    document.getElementById('eventForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        event_name: document.getElementById('event_name').value.trim(),
+        category: document.getElementById('category').value,
+        venue_id: Number(document.getElementById('venue_id').value),
+        faculty_id: Number(document.getElementById('faculty_id').value),
+        event_date: document.getElementById('event_date').value,
+        start_time: document.getElementById('start_time').value,
+        end_time: document.getElementById('end_time').value,
+        description: document.getElementById('description').value.trim(),
+      };
+      if (!payload.event_name || !payload.category || !payload.venue_id || !payload.faculty_id ||
+          !payload.event_date || !payload.start_time || !payload.end_time) {
+        return showMessage('Please fill in all required fields.', 'error');
+      }
+      if (payload.start_time >= payload.end_time) {
+        return showMessage('End time must be after start time.', 'error');
+      }
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = mode === 'edit' ? 'Updating...' : 'Creating...';
+      try {
+        if (mode === 'edit') {
+          await apiCall(`/api/events/${eventId}`, 'PUT', payload);
+          showMessage('Event updated successfully', 'success');
+        } else {
+          const res = await apiCall('/api/events', 'POST', payload);
+          showMessage(`Event created (ID ${res.event_id})`, 'success');
+        }
+        setTimeout(() => {
+          window.location.href = currentUser.role === 'admin'
+            ? '/pages/admin/events.html'
+            : '/pages/faculty/dashboard.html';
+        }, 700);
+      } catch (err) {
+        showMessage(err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = mode === 'edit' ? 'Update Event' : 'Create Event';
+      }
+    });
+  </script>
+</body>
+</html>

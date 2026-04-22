@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SCEMS — Register</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <div id="messages"></div>
+  <div class="auth-wrapper">
+    <div class="auth-card">
+      <h1>Create Account</h1>
+      <p class="subtitle">Students & Faculty — link your account to your campus record</p>
+
+      <form id="regForm" novalidate>
+        <div class="form-group">
+          <label for="role">Role</label>
+          <select id="role" required>
+            <option value="student">Student</option>
+            <option value="faculty">Faculty Organizer</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="linked_id"><span id="idLabel">Student ID</span></label>
+          <input type="number" id="linked_id" placeholder="e.g. 101" required />
+        </div>
+        <div class="form-group">
+          <label for="email">University Email</label>
+          <input type="email" id="email" placeholder="you@univ.edu" required />
+          <div class="form-error small" id="emailError"></div>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="At least 6 characters" required />
+          <div class="form-error small" id="passwordError"></div>
+        </div>
+        <button type="submit" class="btn" id="submitBtn" style="width:100%">Create Account</button>
+      </form>
+      <div class="auth-switch">
+        Already have an account? <a href="/pages/login.html">Sign in</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script>
+    const roleSelect = document.getElementById('role');
+    const idLabel = document.getElementById('idLabel');
+    roleSelect.addEventListener('change', () => {
+      idLabel.textContent = roleSelect.value === 'faculty' ? 'Faculty ID' : 'Student ID';
+    });
+
+    document.getElementById('regForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const role = roleSelect.value;
+      const linked_id = Number(document.getElementById('linked_id').value);
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      document.getElementById('emailError').textContent = '';
+      document.getElementById('passwordError').textContent = '';
+
+      let ok = true;
+      if (!validateEmail(email)) {
+        document.getElementById('emailError').textContent = 'Invalid email address';
+        ok = false;
+      }
+      if (password.length < 6) {
+        document.getElementById('passwordError').textContent = 'Password must be at least 6 characters';
+        ok = false;
+      }
+      if (!linked_id) {
+        showMessage('ID is required', 'error');
+        ok = false;
+      }
+      if (!ok) return;
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+      try {
+        await apiCall('/api/auth/register', 'POST', { email, password, role, linked_id });
+        showMessage('Account created! Redirecting to login...', 'success');
+        setTimeout(() => (window.location.href = '/pages/login.html'), 900);
+      } catch (err) {
+        showMessage(err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Create Account';
+      }
+    });
+  </script>
+</body>
+</html>

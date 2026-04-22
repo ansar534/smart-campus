@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Event Details — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1 id="title">Event Details</h1>
+        <p class="text-muted" id="subtitle">Loading…</p>
+      </div>
+      <a href="/pages/student/events.html" class="btn btn-secondary">Back to Events</a>
+    </div>
+
+    <div class="card">
+      <h2>Overview</h2>
+      <div id="overview" class="loading">Loading event details…</div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const eventId = Number(params.get('id'));
+    let myRegistrationEventIds = new Set();
+
+    (async () => {
+      const user = await requireAuth('student');
+      if (!user) return;
+      renderNavbar(user, 'events');
+      if (!eventId) {
+        showMessage('Missing event id in URL', 'error');
+        return;
+      }
+      await loadData();
+    })();
+
+    async function loadData() {
+      try {
+        const [eventData, regsData] = await Promise.all([
+          apiCall(`/api/events/${eventId}`),
+          apiCall('/api/registrations/my'),
+        ]);
+        myRegistrationEventIds = new Set(
+          (regsData.registrations || [])
+            .filter(r => r.Registration_Status !== 'Cancelled')
+            .map(r => r.Event_ID)
+        );
+        render(eventData.event);
+      } catch (err) {
+        document.getElementById('overview').innerHTML = `<p class="text-muted">${escapeHTML(err.message)}</p>`;
+      }
+    }
+
+    function render(ev) {
+      const reg = Number(ev.Registration_Count || 0);
+      const cap = Number(ev.Capacity || 0);
+      const present = Number(ev.Present_Count || 0);
+      const seatsLeft = Math.max(0, cap - reg);
+      const attendanceRate = reg > 0 ? Math.round((present / reg) * 1000) / 10 : 0;
+      const registered = myRegistrationEventIds.has(ev.Event_ID);
+      document.getElementById('title').textContent = ev.Event_Name;
+      document.getElementById('subtitle').textContent =
+        `${formatDate(ev.Event_Date)} · ${formatTime(ev.Start_Time)} – ${formatTime(ev.End_Time)} · ${ev.Venue_Name}`;
+
+      let action = '';
+      if (registered) action = '<span class="badge confirmed">You are registered</span>';
+      else if (seatsLeft === 0) action = '<span class="badge cancelled">Event is full</span>';
+      else action = `<button class="btn" onclick="register(${ev.Event_ID})">Register Now</button>`;
+
+      document.getElementById('overview').innerHTML = `
+        <div class="cards-grid">
+          <div class="stat-card"><div class="label" data-icon="registrations">Registrations</div><div class="value">${reg}</div></div>
+          <div class="stat-card"><div class="label" data-icon="events">Seats Left</div><div class="value">${seatsLeft}</div></div>
+          <div class="stat-card"><div class="label" data-icon="attendance">Attendance</div><div class="value">${attendanceRate}%</div><div class="sub">${present} present</div></div>
+        </div>
+        <p><strong>Category:</strong> ${escapeHTML(ev.Category || '')}</p>
+        <p><strong>Organizer:</strong> ${escapeHTML(ev.Faculty_Name || '')} (${escapeHTML(ev.Department || 'N/A')})</p>
+        <p><strong>Venue:</strong> ${escapeHTML(ev.Venue_Name || '')} · ${escapeHTML(ev.Venue_Location || '')}</p>
+        <p><strong>Description:</strong><br/>${escapeHTML(ev.Description || 'No description provided.')}</p>
+        <div class="mt-1">${action}</div>
+      `;
+    }
+
+    async function register(id) {
+      try {
+        await apiCall('/api/registrations', 'POST', { event_id: id });
+        showMessage('Registered successfully', 'success');
+        await loadData();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+    window.register = register;
+  </script>
+</body>
+</html>

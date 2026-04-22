@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <h1>System Dashboard</h1>
+    <p class="text-muted">Live KPIs across the SmartCampusEventDB.</p>
+
+    <div class="cards-grid" id="statCards">
+      <div class="stat-card"><div class="label" data-icon="events">Total Events</div><div class="value">–</div></div>
+      <div class="stat-card"><div class="label" data-icon="registrations">Total Registrations</div><div class="value">–</div></div>
+      <div class="stat-card"><div class="label" data-icon="attendance">Attendance Rate</div><div class="value">–</div></div>
+      <div class="stat-card"><div class="label" data-icon="student">Top Student</div><div class="value">–</div></div>
+      <div class="stat-card"><div class="label" data-icon="venue">Busiest Venue</div><div class="value">–</div></div>
+    </div>
+
+    <div class="card">
+      <div class="flex-between mb-1">
+        <h2>All Events</h2>
+        <div class="flex gap-sm">
+          <a href="/pages/admin/events.html" class="btn btn-secondary btn-sm">Manage Events</a>
+          <a href="/pages/admin/reports.html" class="btn btn-secondary btn-sm">Open Reports</a>
+        </div>
+      </div>
+      <div id="allEvents" class="loading">Loading…</div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    (async () => {
+      const user = await requireAuth('admin');
+      if (!user) return;
+      renderNavbar(user, 'dashboard');
+      loadStats();
+      loadAllEvents();
+    })();
+
+    async function loadStats() {
+      try {
+        const s = await apiCall('/api/admin/stats');
+        document.getElementById('statCards').innerHTML = `
+          <div class="stat-card"><div class="label" data-icon="events">Total Events</div><div class="value">${s.total_events}</div></div>
+          <div class="stat-card"><div class="label" data-icon="registrations">Total Registrations</div><div class="value">${s.total_registrations}</div></div>
+          <div class="stat-card"><div class="label" data-icon="attendance">Attendance Rate</div><div class="value">${s.attendance_rate}%</div></div>
+          <div class="stat-card"><div class="label" data-icon="student">Top Student</div>
+            <div class="value">${escapeHTML(s.top_student?.name || '—')}</div>
+            <div class="sub">${s.top_student?.count || 0} registrations</div></div>
+          <div class="stat-card"><div class="label" data-icon="venue">Busiest Venue</div>
+            <div class="value">${escapeHTML(s.top_venue?.name || '—')}</div>
+            <div class="sub">${s.top_venue?.count || 0} events</div></div>`;
+      } catch (err) { showMessage(err.message, 'error'); }
+    }
+
+    async function loadAllEvents() {
+      try {
+        const data = await apiCall('/api/admin/events');
+        const events = data.events || [];
+        const el = document.getElementById('allEvents');
+        if (!events.length) { el.innerHTML = '<p class="text-muted">No events.</p>'; return; }
+        el.innerHTML = `
+          <div class="table-wrapper">
+            <table class="data">
+              <thead><tr><th>ID</th><th>Event</th><th>Category</th><th>Date</th><th>Venue</th><th>Organizer</th><th>Analytics</th><th>Actions</th></tr></thead>
+              <tbody>${events.map(e => `
+                <tr>
+                  <td>${e.Event_ID}</td>
+                  <td>${escapeHTML(e.Event_Name)}</td>
+                  <td>${escapeHTML(e.Category)}</td>
+                  <td>${formatDate(e.Event_Date)}<br/><span class="small text-muted">${formatTime(e.Start_Time)}</span></td>
+                  <td>${escapeHTML(e.Venue_Name)}</td>
+                  <td>${escapeHTML(e.Faculty_Name)}</td>
+                  <td>
+                    ${Number(e.Registration_Count || 0)} / ${Number(e.Capacity || 0)} registered
+                    <br/>
+                    <span class="small text-muted">
+                      ${Number(e.Present_Count || 0)} present
+                      (${Number(e.Registration_Count || 0) > 0
+                        ? Math.round((Number(e.Present_Count || 0) / Number(e.Registration_Count || 0)) * 1000) / 10
+                        : 0}%)
+                    </span>
+                  </td>
+                  <td><a class="btn btn-sm btn-secondary" href="/pages/events/event-form.html?mode=edit&id=${e.Event_ID}">Edit</a></td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      } catch (err) { showMessage(err.message, 'error'); }
+    }
+  </script>
+</body>
+</html>

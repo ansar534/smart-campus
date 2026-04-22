@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SCEMS — Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <div id="messages"></div>
+  <div class="auth-wrapper">
+    <div class="auth-card">
+      <h1>Smart Campus</h1>
+      <p class="subtitle">Event Management System — Sign In</p>
+
+      <form id="loginForm" novalidate>
+        <div class="form-group">
+          <label for="email">University Email</label>
+          <input type="email" id="email" name="email" placeholder="you@univ.edu" required />
+          <div class="form-error" id="emailError"></div>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="••••••••" required />
+          <div class="form-error" id="passwordError"></div>
+        </div>
+        <button type="submit" class="btn" id="submitBtn" style="width:100%">Sign In</button>
+      </form>
+
+      <div class="auth-switch">
+        No account? <a href="/pages/register.html">Register as a student</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      document.getElementById('emailError').textContent = '';
+      document.getElementById('passwordError').textContent = '';
+
+      let ok = true;
+      if (!validateEmail(email)) {
+        document.getElementById('emailError').textContent = 'Enter a valid email address';
+        ok = false;
+      }
+      if (password.length < 6) {
+        document.getElementById('passwordError').textContent = 'Password must be at least 6 characters';
+        ok = false;
+      }
+      if (!ok) return;
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+      try {
+        const data = await apiCall('/api/auth/login', 'POST', { email, password });
+        const role = data.user.role;
+        showMessage(`Welcome, ${data.user.name}!`, 'success');
+        setTimeout(() => {
+          window.location.href = `/pages/${role}/dashboard.html`;
+        }, 500);
+      } catch (err) {
+        showMessage(err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    });
+  </script>
+</body>
+</html>

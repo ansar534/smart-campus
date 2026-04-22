@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Profile — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <h1>My Profile</h1>
+    <p class="text-muted">View your student details and update account password.</p>
+
+    <div class="card">
+      <h2>Student Details</h2>
+      <div id="profileBox" class="loading">Loading profile…</div>
+    </div>
+
+    <div class="card">
+      <h2>Change Password</h2>
+      <form id="pwdForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="current_password">Current Password *</label>
+            <input id="current_password" type="password" required />
+          </div>
+          <div class="form-group">
+            <label for="new_password">New Password *</label>
+            <input id="new_password" type="password" minlength="6" required />
+          </div>
+        </div>
+        <button class="btn" type="submit">Update Password</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    (async () => {
+      const user = await requireAuth('student');
+      if (!user) return;
+      renderNavbar(user, 'profile');
+      await loadProfile();
+    })();
+
+    async function loadProfile() {
+      try {
+        const data = await apiCall('/api/auth/profile');
+        const p = data.profile || {};
+        document.getElementById('profileBox').innerHTML = `
+          <p><strong>Name:</strong> ${escapeHTML((p.First_Name || '') + ' ' + (p.Last_Name || ''))}</p>
+          <p><strong>Email:</strong> ${escapeHTML(p.Email || data.user.email || '')}</p>
+          <p><strong>Major:</strong> ${escapeHTML(p.Major || 'N/A')}</p>
+          <p><strong>Academic Year:</strong> ${escapeHTML(p.Academic_Year || 'N/A')}</p>
+          <p><strong>Phone:</strong> ${escapeHTML(p.Phone || 'N/A')}</p>
+          <p><strong>Student ID:</strong> ${escapeHTML(String(p.Student_ID || data.user.linked_id || 'N/A'))}</p>
+        `;
+      } catch (err) {
+        document.getElementById('profileBox').innerHTML = `<p class="text-muted">${escapeHTML(err.message)}</p>`;
+      }
+    }
+
+    document.getElementById('pwdForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const current_password = document.getElementById('current_password').value;
+      const new_password = document.getElementById('new_password').value;
+      if (!current_password || !new_password) {
+        return showMessage('All password fields are required', 'error');
+      }
+      if (new_password.length < 6) {
+        return showMessage('New password must be at least 6 characters', 'error');
+      }
+      try {
+        await apiCall('/api/auth/password', 'PATCH', { current_password, new_password });
+        showMessage('Password updated successfully', 'success');
+        document.getElementById('pwdForm').reset();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    });
+  </script>
+</body>
+</html>

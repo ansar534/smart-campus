@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Events — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <h1>My Events</h1>
+
+    <div class="card">
+      <h2>My Registrations</h2>
+      <div id="regTable" class="loading">Loading…</div>
+    </div>
+
+    <div class="card">
+      <h2>Attendance History</h2>
+      <div id="attTable" class="loading">Loading…</div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    async function loadData() {
+      try {
+        const [regData, attData] = await Promise.all([
+          apiCall('/api/registrations/my'),
+          apiCall('/api/attendance/my'),
+        ]);
+        renderRegistrations(regData.registrations || []);
+        renderAttendance(attData.attendance || []);
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+
+    function renderRegistrations(regs) {
+      const el = document.getElementById('regTable');
+      if (!regs.length) {
+        el.innerHTML = '<p class="text-muted">You have not registered for any events yet.</p>';
+        return;
+      }
+      el.innerHTML = `
+        <div class="table-wrapper">
+          <table class="data">
+            <thead><tr>
+              <th>Event</th><th>Date</th><th>Time</th><th>Venue</th>
+              <th>Registered</th><th>Status</th><th></th>
+            </tr></thead>
+            <tbody>${regs.map(r => `
+              <tr>
+                <td><a href="/pages/student/event-details.html?id=${r.Event_ID}"><strong>${escapeHTML(r.Event_Name)}</strong></a><br/><span class="small text-muted">${escapeHTML(r.Category)}</span></td>
+                <td>${formatDate(r.Event_Date)}</td>
+                <td>${formatTime(r.Start_Time)} – ${formatTime(r.End_Time)}</td>
+                <td>${escapeHTML(r.Venue_Name)}</td>
+                <td>${formatDate(r.Registration_Date)}</td>
+                <td>${statusBadge(r.Registration_Status)}</td>
+                <td>${r.Registration_Status === 'Pending'
+                  ? `<button class="btn btn-sm btn-danger" onclick="cancelReg(${r.Registration_ID})">Cancel</button>`
+                  : ''}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function renderAttendance(records) {
+      const el = document.getElementById('attTable');
+      if (!records.length) {
+        el.innerHTML = '<p class="text-muted">No attendance records yet.</p>';
+        return;
+      }
+      el.innerHTML = `
+        <div class="table-wrapper">
+          <table class="data">
+            <thead><tr><th>Event</th><th>Date</th><th>Venue</th><th>Status</th><th>Check-in</th></tr></thead>
+            <tbody>${records.map(a => `
+              <tr>
+                <td>${escapeHTML(a.Event_Name)}</td>
+                <td>${formatDate(a.Event_Date)}</td>
+                <td>${escapeHTML(a.Venue_Name)}</td>
+                <td>${statusBadge(a.Attendance_Status)}</td>
+                <td>${a.Check_In_Time ? formatTime(a.Check_In_Time) : '—'}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    async function cancelReg(id) {
+      if (!confirm('Cancel this registration?')) return;
+      try {
+        await apiCall(`/api/registrations/${id}/cancel`, 'PATCH');
+        showMessage('Registration cancelled', 'success');
+        loadData();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    }
+    window.cancelReg = cancelReg;
+
+    (async () => {
+      const user = await requireAuth('student');
+      if (!user) return;
+      renderNavbar(user, 'my-events');
+      loadData();
+    })();
+  </script>
+</body>
+</html>

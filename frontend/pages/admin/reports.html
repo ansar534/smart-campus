@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Reports — SCEMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/theme.css" />
+</head>
+<body>
+  <nav class="navbar" id="navbar"></nav>
+  <div id="messages"></div>
+
+  <div class="container">
+    <h1>Phase 3 SQL Reports</h1>
+    <p class="text-muted">Runs the 14 canned analytical queries from the Phase 3 SQL file.</p>
+
+    <div class="card">
+      <div class="filters">
+        <div class="form-group" style="flex:3">
+          <label for="queryId">Select a query</label>
+          <select id="queryId"><option value="">Loading…</option></select>
+        </div>
+        <button type="button" class="btn" id="runBtn">Run Query</button>
+        <button type="button" class="btn btn-secondary" id="runAllBtn">Run All</button>
+      </div>
+      <p class="small text-muted" id="queryDesc"></p>
+    </div>
+
+    <div id="result"></div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    let queries = [];
+
+    (async () => {
+      const user = await requireAuth('admin');
+      if (!user) return;
+      renderNavbar(user, 'reports');
+      try {
+        const data = await apiCall('/api/admin/reports');
+        queries = data.queries || [];
+        const sel = document.getElementById('queryId');
+        sel.innerHTML = queries.map(q => `<option value="${q.id}">${escapeHTML(q.title)}</option>`).join('');
+        sel.addEventListener('change', updateDesc);
+        updateDesc();
+      } catch (err) { showMessage(err.message, 'error'); }
+    })();
+
+    function updateDesc() {
+      const id = Number(document.getElementById('queryId').value);
+      const q = queries.find(x => x.id === id);
+      document.getElementById('queryDesc').textContent = q ? q.description : '';
+    }
+
+    document.getElementById('runBtn').addEventListener('click', async () => {
+      const id = Number(document.getElementById('queryId').value);
+      if (!id) return;
+      await runOne(id, true);
+    });
+
+    document.getElementById('runAllBtn').addEventListener('click', async () => {
+      document.getElementById('result').innerHTML = '';
+      for (const q of queries) await runOne(q.id, false);
+    });
+
+    async function runOne(id, replace) {
+      const result = document.getElementById('result');
+      if (replace) result.innerHTML = '<p class="loading">Running query…</p>';
+      try {
+        const data = await apiCall(`/api/admin/reports/${id}`);
+        const block = document.createElement('div');
+        block.className = 'card';
+        block.innerHTML = `
+          <h3>${escapeHTML(data.title)}</h3>
+          <p class="small text-muted">${data.rows.length} row(s)</p>
+          ${renderTable(data.columns, data.rows)}`;
+        if (replace) result.innerHTML = '';
+        result.appendChild(block);
+      } catch (err) {
+        if (replace) result.innerHTML = '';
+        showMessage(err.message, 'error');
+        console.error('Query failed:', err);
+      }
+    }
+
+    function renderTable(columns, rows) {
+      if (!rows.length) return '<p class="text-muted">No rows returned.</p>';
+      return `<div class="table-wrapper"><table class="data">
+        <thead><tr>${columns.map(c => `<th>${escapeHTML(c)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r => `
+          <tr>${columns.map(c => `<td>${escapeHTML(r[c] === null || r[c] === undefined ? '—' : r[c])}</td>`).join('')}</tr>`).join('')}
+        </tbody></table></div>`;
+    }
+  </script>
+</body>
+</html>
